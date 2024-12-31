@@ -93,7 +93,7 @@ struct GState {
 
 // gamestate handling
 int most_recent_savestate_frame = 0;
-std::unordered_map<int, std::unique_ptr<GState>> gamestates;
+std::unordered_map<int, GState> gamestates;
 
 void update_state(GState& gs, GInput inputs[2], int num_players) {
     // advance frame number
@@ -132,26 +132,26 @@ uint32_t fletcher32(const uint16_t* data, size_t len) {
 
 void SaveGameState(GState* gs) {
     // save the gamestate how you do this depends on your implementation.
-    
+
     // state doesnt exist? well then create it.
     if (gamestates.count(gs->framenumber) == 0) {
-        gamestates[gs->framenumber] = std::make_unique<GState>();
+        gamestates[gs->framenumber] = {};
     }
 
     // copy to save it
-    std::memcpy(gamestates[gs->framenumber].get(), gs, sizeof(GState));
 
+    gamestates[gs->framenumber] = *gs;
     // savestate cleanup
     if (gs->framenumber > most_recent_savestate_frame) {
         most_recent_savestate_frame = gs->framenumber;
 
         for (auto it = gamestates.begin(); it != gamestates.end();) {
-            // we add 2 because gekkonet relies on that buffer to handle rollbacks internally.
-            // good to keep that standard.
-            if (it->first < most_recent_savestate_frame - (MAX_ROLLBACK_WINDOW + 2)) {
+            // we add 2 because gekkonet relies on that buffer to handle
+            // rollbacks internally. good to keep that standard.
+            if (it->first <
+                most_recent_savestate_frame - (MAX_ROLLBACK_WINDOW + 2)) {
                 it = gamestates.erase(it);
-            }
-            else {
+            } else {
                 ++it;
             }
         }
@@ -161,7 +161,8 @@ void SaveGameState(GState* gs) {
 void save_state(GState* gs, GekkoGameEvent* ev) {
     // pass framenumber to gekkonet
     *ev->data.save.state_len = sizeof(int);
-    *ev->data.save.checksum = fletcher32((uint16_t*)&gs->framenumber, sizeof(int));
+    *ev->data.save.checksum =
+        fletcher32((uint16_t*)&gs->framenumber, sizeof(int));
     std::memcpy(ev->data.save.state, &gs->framenumber, sizeof(int));
     // handle saving ourselves
     SaveGameState(gs);
@@ -174,7 +175,7 @@ void LoadGameState(int frame, GState* gs) {
     }
     // load the gamestate
     // how to handle this depends on your implementation
-    std::memcpy(gs, gamestates[frame].get(), sizeof(GState));
+    *gs = gamestates[frame];
 }
 
 void load_state(GState* gs, GekkoGameEvent* ev) {
