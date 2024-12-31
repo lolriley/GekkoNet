@@ -9,6 +9,7 @@
 #include <vector>
 #include <iostream>
 #include <thread>
+#include <unordered_map>
 
 SDL_Window* window = nullptr;
 SDL_Renderer* renderer = nullptr;
@@ -21,6 +22,8 @@ using slow_frame = std::chrono::duration<unsigned int, std::ratio<1, 58>>;
 using normal_frame = std::chrono::duration<unsigned int, std::ratio<1, 60>>;
 using fast_frame = std::chrono::duration<unsigned int, std::ratio<1, 62>>;
 using gclock = std::chrono::steady_clock;
+
+const int MAX_ROLLBACK_WINDOW = 8;
 
 bool init_window(void) {
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
@@ -85,9 +88,17 @@ struct GState {
     int px[2]{ 0, 0};
     int py[2]{ 0, 0};
     char desync = 0;
+    int framenumber = 0;
 };
 
+// gamestate handling
+int most_recent_savestate_frame = 0;
+std::unordered_map<int, std::unique_ptr<GState>> gamestates;
+
 void update_state(GState& gs, GInput inputs[2], int num_players) {
+    // advance frame number
+    gs.framenumber++;
+    // update game
     for (int player = 0; player < num_players; player++) {
         if (inputs[player].input.dir.up) gs.py[player] -= 2;
         if (inputs[player].input.dir.down) gs.py[player] += 2;
@@ -119,14 +130,59 @@ uint32_t fletcher32(const uint16_t* data, size_t len) {
     return (c1 << 16 | c0);
 }
 
+void SaveGameState(GState* gs) {
+    // save the gamestate how you do this depends on your implementation.
+    
+    // state doesnt exist? well then create it.
+    if (gamestates.count(gs->framenumber) == 0) {
+        gamestates[gs->framenumber] = std::make_unique<GState>();
+    }
+
+    // copy to save it
+    std::memcpy(gamestates[gs->framenumber].get(), gs, sizeof(GState));
+
+    // savestate cleanup
+    if (gs->framenumber > most_recent_savestate_frame) {
+        most_recent_savestate_frame = gs->framenumber;
+
+        for (auto it = gamestates.begin(); it != gamestates.end();) {
+            // we add 2 because gekkonet relies on that buffer to handle rollbacks internally.
+            // good to keep that standard.
+            if (it->first < most_recent_savestate_frame - (MAX_ROLLBACK_WINDOW + 2)) {
+                it = gamestates.erase(it);
+            }
+            else {
+                ++it;
+            }
+        }
+    }
+}
+
 void save_state(GState* gs, GekkoGameEvent* ev) {
-    *ev->data.save.state_len = sizeof(GState);
-    *ev->data.save.checksum = fletcher32((uint16_t*)gs, sizeof(GState));
-    std::memcpy(ev->data.save.state, gs, sizeof(GState));
+    // pass framenumber to gekkonet
+    *ev->data.save.state_len = sizeof(int);
+    *ev->data.save.checksum = fletcher32((uint16_t*)&gs->framenumber, sizeof(int));
+    std::memcpy(ev->data.save.state, &gs->framenumber, sizeof(int));
+    // handle saving ourselves
+    SaveGameState(gs);
+}
+
+void LoadGameState(int frame, GState* gs) {
+    if (gamestates.count(frame) == 0) {
+        // cant load a state that doesnt exist..
+        return;
+    }
+    // load the gamestate
+    // how to handle this depends on your implementation
+    std::memcpy(gs, gamestates[frame].get(), sizeof(GState));
 }
 
 void load_state(GState* gs, GekkoGameEvent* ev) {
-    std::memcpy(gs, ev->data.load.state, sizeof(GState));
+    // get the framenumber
+    int frame_to_load = 0;
+    std::memcpy(&frame_to_load, ev->data.load.state, sizeof(int));
+    // load the frame ourselves
+    LoadGameState(frame_to_load, gs);
 }
 
 void render_state(GState& gs) {
@@ -203,9 +259,12 @@ int main(int argc, char* args[])
 
     conf.num_players = num_players;
     conf.input_size = sizeof(char);
-    conf.state_size = sizeof(GState);
+
+    // instead of passing state we are passing the frame number and handling saving/loading ourselves.
+    conf.state_size = sizeof(int);
+
     conf.max_spectators = 0;
-    conf.input_prediction_window = 10;
+    conf.input_prediction_window = MAX_ROLLBACK_WINDOW;
     conf.desync_detection = true;
     // conf.limited_saving = true;
 
