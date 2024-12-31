@@ -180,7 +180,7 @@ static GekkoNetResult** steam_receive(int* length) {
     // call the api_callback update somewhere else maybe?
     /*
         uint64_t now = GetTime();
-        if(previoustime - now > 10){
+        if(now - previoustime > 10){
             SteamAPI_RunCallbacks();
             previoustime = now;
         }
