@@ -160,3 +160,70 @@ GekkoNetAdapter* gekko_default_adapter(unsigned short port) {
 }
 
 #endif // GEKKONET_NO_ASIO
+
+
+#ifdef GEKKONET_USING_STEAM
+#ifdef _WIN32
+#define _WIN32_WINNT 0x0A00
+#endif  // _WIN32
+
+#include <steam/isteamfriends.h>
+#include <steam/isteammatchmaking.h>
+#include <steam/isteamnetworking.h>
+#include <steam/isteamnetworkingmessages.h>
+#include <steam/isteamnetworkingsockets.h>
+#include <steam/isteamnetworkingutils.h>
+#include <steam/steam_api.h>
+
+static GekkoNetResult** steam_receive(int* length) {
+    _results.clear();
+    // call the api_callback update somewhere else maybe?
+    /*
+        uint64_t now = GetTime();
+        if(previoustime - now > 10){
+            SteamAPI_RunCallbacks();
+            previoustime = now;
+        }
+    */
+    while (true) {
+        int messagecount = 0;
+        SteamNetworkingMessage_t* steampacket = nullptr;
+        messagecount = SteamNetworkingMessages()->ReceiveMessagesOnChannel(
+            0, &steampacket, 1);
+        if (messagecount <= 0) {
+            break;
+        }
+
+        _results.push_back(new GekkoNetResult());
+        auto res = _results.back();
+
+        // each steam packet contains
+        /*
+        SteamNetworkingIdentity m_identityPeer;
+        */
+        // m_identityPeer is an object which is realistically a 64bit identity
+        // m_identityPeer.GetSteamID64() returns the 64 bit id
+        // SteamNetworkingIdentity can be created using a 64 bit CSteamId
+
+        // endpoint.size() should be 64bit
+        uint64_t identitypeer = steampacket->m_identityPeer.GetSteamID64();
+        res->addr.data = new char[sizeof(identitypeer)];
+        res->addr.size = (u32)sizeof(identitypeer);
+
+        std::memcpy(res->addr.data, &steampacket->m_identityPeer.GetSteamID64(),
+                    sizeof(identitypeer));
+
+        // steampacket->m_cbSize is the payload size
+        res->data_len = steampacket->m_cbSize;
+        res->data = new char[steampacket->m_cbSize];
+
+        // steampacket->m_pData is the pointer to the payload
+        std::memcpy(res->data, steampacket->m_pData, steampacket->m_cbSize);
+    }
+    // assign length the number of messages we received
+    *length = (int)_results.size();
+
+    return _results.data();
+}
+
+#endif // GEKKONET_USING_STEAM
