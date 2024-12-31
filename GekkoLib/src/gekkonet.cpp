@@ -175,6 +175,38 @@ GekkoNetAdapter* gekko_default_adapter(unsigned short port) {
 #include <steam/isteamnetworkingutils.h>
 #include <steam/steam_api.h>
 
+
+static void steam_send(GekkoNetAddress* addr, const char* data, int length) {
+    SteamNetworkingIdentity peeridentity;
+    memset(&peeridentity, 0, sizeof(SteamNetworkingIdentity));
+
+    peeridentity.m_eType = k_ESteamNetworkingIdentityType_SteamID;
+
+    uint64_t u64idforpeer = 0;
+    memcpy(&u64idforpeer, addr->data, addr->size);
+    peeridentity.SetSteamID64(u64idforpeer);
+
+    EResult status = SteamNetworkingMessages()->SendMessageToUser(
+        peeridentity, data, length, k_nSteamNetworkingSend_Reliable, 0);
+
+    /*
+        if (_ec) {
+    std::cerr << "send failed: " << _ec.message() << std::endl;
+}
+    */
+
+   if(status==k_EResultOK){
+    //we're good
+   }else{
+    //do we assign _ce to the error?
+
+    //ec= 1 //?
+
+    std::cout << "send failed with error code" << status << std::endl;
+   }
+}
+
+
 static GekkoNetResult** steam_receive(int* length) {
     _results.clear();
     // call the api_callback update somewhere else maybe?
