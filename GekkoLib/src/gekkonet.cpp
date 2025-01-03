@@ -162,20 +162,16 @@ GekkoNetAdapter* gekko_default_adapter(unsigned short port) {
 #endif // GEKKONET_NO_ASIO
 
 
-#ifdef GEKKONET_USING_STEAM
+#if defined(GEKKONET_USING_STEAM)
 #ifdef _WIN32
 #define _WIN32_WINNT 0x0A00
 #endif  // _WIN32
 
-#include <steam/isteamfriends.h>
-#include <steam/isteammatchmaking.h>
-#include <steam/isteamnetworking.h>
 #include <steam/isteamnetworkingmessages.h>
-#include <steam/isteamnetworkingsockets.h>
-#include <steam/isteamnetworkingutils.h>
-#include <steam/steam_api.h>
+#include <iostream>
 
-
+static std::vector<GekkoNetResult*> _results;
+EResult _ec;
 static void steam_send(GekkoNetAddress* addr, const char* data, int length) {
     SteamNetworkingIdentity peeridentity;
     memset(&peeridentity, 0, sizeof(SteamNetworkingIdentity));
@@ -186,37 +182,21 @@ static void steam_send(GekkoNetAddress* addr, const char* data, int length) {
     memcpy(&u64idforpeer, addr->data, addr->size);
     peeridentity.SetSteamID64(u64idforpeer);
 
-    EResult status = SteamNetworkingMessages()->SendMessageToUser(
-        peeridentity, data, length, k_nSteamNetworkingSend_Reliable, 0);
+    _ec = SteamNetworkingMessages()->SendMessageToUser(
+        peeridentity, data, length, k_nSteamNetworkingSend_UnreliableNoDelay,
+        0);
 
-    /*
-        if (_ec) {
-    std::cerr << "send failed: " << _ec.message() << std::endl;
+
+    if (_ec == k_EResultOK) {
+
+    } else {
+        std::cout << "send failed with error code" << _ec << std::endl;
+    }
 }
-    */
-
-   if(status==k_EResultOK){
-    //we're good
-   }else{
-    //do we assign _ce to the error?
-
-    //ec= 1 //?
-
-    std::cout << "send failed with error code" << status << std::endl;
-   }
-}
-
 
 static GekkoNetResult** steam_receive(int* length) {
     _results.clear();
-    // call the api_callback update somewhere else maybe?
-    /*
-        uint64_t now = GetTime();
-        if(now - previoustime > 10){
-            SteamAPI_RunCallbacks();
-            previoustime = now;
-        }
-    */
+
     while (true) {
         int messagecount = 0;
         SteamNetworkingMessage_t* steampacket = nullptr;
@@ -229,33 +209,32 @@ static GekkoNetResult** steam_receive(int* length) {
         _results.push_back(new GekkoNetResult());
         auto res = _results.back();
 
-        // each steam packet contains
-        /*
-        SteamNetworkingIdentity m_identityPeer;
-        */
-        // m_identityPeer is an object which is realistically a 64bit identity
-        // m_identityPeer.GetSteamID64() returns the 64 bit id
-        // SteamNetworkingIdentity can be created using a 64 bit CSteamId
 
-        // endpoint.size() should be 64bit
         uint64_t identitypeer = steampacket->m_identityPeer.GetSteamID64();
         res->addr.data = new char[sizeof(identitypeer)];
         res->addr.size = (u32)sizeof(identitypeer);
 
-        std::memcpy(res->addr.data, &steampacket->m_identityPeer.GetSteamID64(),
-                    sizeof(identitypeer));
+        std::memcpy(res->addr.data, &identitypeer, sizeof(identitypeer));
 
-        // steampacket->m_cbSize is the payload size
         res->data_len = steampacket->m_cbSize;
         res->data = new char[steampacket->m_cbSize];
 
-        // steampacket->m_pData is the pointer to the payload
         std::memcpy(res->data, steampacket->m_pData, steampacket->m_cbSize);
     }
-    // assign length the number of messages we received
+
     *length = (int)_results.size();
 
     return _results.data();
 }
 
-#endif // GEKKONET_USING_STEAM
+static void steam_free(void* data_ptr) { delete data_ptr; }
+
+static GekkoNetAdapter default_sock{steam_send, steam_receive, steam_free};
+
+GekkoNetAdapter* gekko_default_adapter() {
+
+    return &default_sock;
+}
+
+#endif  // GEKKONET_USING_STEAM
+

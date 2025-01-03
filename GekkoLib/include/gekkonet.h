@@ -186,6 +186,11 @@ GEKKONET_API GekkoNetAdapter* gekko_default_adapter(unsigned short port);
 
 #endif // GEKKONET_NO_ASIO
 
+#if defined(GEKKONET_USING_STEAM)
+
+GEKKONET_API GekkoNetAdapter* gekko_default_adapter();
+#endif
+
 #ifdef __cplusplus
 }
 #endif

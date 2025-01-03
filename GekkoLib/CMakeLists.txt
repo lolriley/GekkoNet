@@ -10,6 +10,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # Option to build both shared and static libraries
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
+
+
 option(BUILD_DOCS "Build documentation" OFF)
 
 if(MSVC)
@@ -24,7 +26,8 @@ else()
 endif()
 
 # Option to exclude ASIO from the shared and static libraries
-option(NO_ASIO_BUILD "Exclude ASIO from the build" OFF)
+option(NO_ASIO_BUILD "Exclude ASIO from the build" ON)
+option(GEKKONET_USING_STEAM "Using Steam Networking Relay" ON)
 
 # Include directories for your project headers
 include_directories(${PROJECT_SOURCE_DIR}/include)
@@ -32,6 +35,16 @@ include_directories(${PROJECT_SOURCE_DIR}/thirdparty)
 
 if(NOT NO_ASIO_BUILD) 
     include_directories(${PROJECT_SOURCE_DIR}/thirdparty/asio)
+endif()
+if(GEKKONET_USING_STEAM)
+    include_directories(${PROJECT_SOURCE_DIR}/thirdparty/sdk/public)
+    if (WIN32)
+        link_directories(${PROJECT_SOURCE_DIR}/thirdparty/sdk/redistributable_bin/win64)
+        link_libraries(steam_api64.lib)
+    elseif(APPLE)
+        link_directories(${PROJECT_SOURCE_DIR}/thirdparty/sdk/redistributable_bin/osx)
+        link_libraries(libsteam_api.dylib)
+    endif()
 endif()
 
 # Manually list all your source files
@@ -63,6 +76,9 @@ endif()
 if(NO_ASIO_BUILD)
     set(TARGET_SUFFIX "${TARGET_SUFFIX}_NO_ASIO")
 endif()
+if(GEKKONET_USING_STEAM)
+    set(TARGET_SUFFIX "${TARGET_SUXX}_STEAM")
+endif()
 
 # Set the output name with the conditional suffix
 set_target_properties(GekkoNet PROPERTIES OUTPUT_NAME "GekkoNet${TARGET_SUFFIX}")
@@ -76,6 +92,9 @@ endif()
 
 if(NO_ASIO_BUILD)
     target_compile_definitions(GekkoNet PRIVATE GEKKONET_NO_ASIO)
+endif()
+if(GEKKONET_USING_STEAM)
+    target_compile_definitions(GekkoNet PRIVATE GEKKONET_USING_STEAM)
 endif()
 
 # Documentation configuration
